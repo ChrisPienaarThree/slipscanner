@@ -152,6 +152,28 @@
     return out;
   }
 
-  const api = { grey, otsu, detectQuad, outSize, homography, warp, enhance, makePdf, area };
+  // True when the 4 corners make a convex shape in TL, TR, BR, BL order (no crossed or folded corners).
+  function convex(q) {
+    let sign = 0;
+    for (let i = 0; i < 4; i++) {
+      const [ax, ay] = q[i], [bx, by] = q[(i + 1) % 4], [cx, cy] = q[(i + 2) % 4];
+      const z = (bx - ax) * (cy - by) - (by - ay) * (cx - bx);
+      if (Math.abs(z) < 1e-9) return false;
+      if (!sign) sign = Math.sign(z); else if (Math.sign(z) !== sign) return false;
+    }
+    return sign > 0;   // clockwise on screen (y down) = TL, TR, BR, BL
+  }
+
+  // Amount as typed -> '1234.50', '' (empty) or null (not an amount). Accepts R, spaces, SA decimal comma
+  // ('2839,50') and thousands separators ('2,839.50', '2 839,50').
+  function amount(txt) {
+    let s = String(txt || '').replace(/[\sR]/gi, '');
+    if (!s) return '';
+    if (/^\d{1,3}(,\d{3})+(\.\d{1,2})?$/.test(s)) s = s.replace(/,/g, '');        // 2,839.50 or 2,839
+    else if (/^\d+,\d{1,2}$/.test(s)) s = s.replace(',', '.');                       // 2839,50
+    return /^\d+(\.\d{1,2})?$/.test(s) ? (+s).toFixed(2) : null;
+  }
+
+  const api = { grey, otsu, detectQuad, outSize, homography, warp, enhance, makePdf, area, convex, amount };
   if (typeof module !== 'undefined') module.exports = api; else root.Scan = api;
 })(this);

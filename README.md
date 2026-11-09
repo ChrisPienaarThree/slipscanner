@@ -35,13 +35,77 @@ signed in to that account.
 5. **Deploy as a web app.** **Deploy → New deployment** → ⚙️ next to *Select type* → **Web app**.
    - *Execute as:* **Me**. *Who has access:* **Anyone**. Click **Deploy**.
    - Copy the **Web app URL** (it ends in `/exec`).
-6. **Install the app on the phone.** Open https://chrispienaarthree.github.io/slipscanner/ in Safari → Share → **Add to Home Screen**
-   (Android: Chrome menu → *Install app*).
-7. **Link the phone.** In the app open **Settings**, paste the web app URL and the token, and tap **Save and test**.
+6. **Install the app on the phone**, see [Install on the phone](#install-on-the-phone) below.
+7. **Link the phone.** In the app open **⚙︎ Settings**, paste the web app URL and the token (see
+   [Find the /exec URL](#find-the-exec-url) and [Find the token](#find-the-token)), and tap **Save and test**.
    You should see *Connected. Allowed addresses: …*; the send-to address is filled in for you.
 8. **Gmail filter (recommended).** In Gmail, open the search options (▾), set **Subject** to `[SLIP]`,
    click **Create filter**, tick **Apply the label** → *New label* **Slipscanner Inbox** (and **Skip the Inbox** if
    you don't want scans in your inbox).
+
+## Install on the phone
+
+The app is a web page that installs like an app. Install it from the browser, then **always open it from the
+Home Screen icon**. The installed app keeps its own storage, separate from the browser tab, so Settings and scans
+entered in a browser tab do not appear in the installed app.
+
+### iPhone or iPad, Safari
+
+1. Open **Safari** and go to https://chrispienaarthree.github.io/slipscanner/. Wait until the page has loaded (you see *New document*).
+2. Tap the **Share** button (a square with an arrow pointing up).
+   - iPhone: at the bottom of the screen. If the bar at the bottom only shows the address, tap **•••** next to it
+     first, then **Share**.
+   - iPad: at the top right, next to the address.
+3. Scroll down the list and tap **Add to Home Screen**.
+   If it is not there: scroll to the bottom, tap **Edit Actions…** and add **Add to Home Screen**.
+4. Keep the name **Slipscanner**. If you see **Open as Web App**, leave it switched on. Tap **Add** (top right).
+5. Go to the Home Screen and open **Slipscanner** from its icon.
+6. The first time you tap **📷 Camera**, allow camera access.
+
+### iPhone or iPad, Chrome (iOS 16.4 or newer)
+
+1. Open **Chrome** and go to https://chrispienaarthree.github.io/slipscanner/.
+2. Tap the **Share** button in the address bar (top right; a square with an arrow).
+3. Tap **Add to Home Screen** (scroll down if needed), keep the name, tap **Add**.
+4. Open **Slipscanner** from the Home Screen icon.
+
+### Android, Chrome
+
+1. Open **Chrome** and go to https://chrispienaarthree.github.io/slipscanner/.
+2. Tap the **⋮** menu (top right) → **Add to Home screen** or **Install app**.
+3. Tap **Install** (or **Add**), and confirm **Add to home screen** if asked.
+4. Open **Slipscanner** from the Home screen or the app drawer. Allow camera access when asked.
+
+### Updates
+
+Open the app once with signal: it fetches the newest version by itself. The version number is at the bottom of
+**⚙︎ Settings**.
+
+## Find the /exec URL
+
+The app needs the **web app URL** of your deployment. It ends in **`/exec`**.
+
+1. In the script editor click **Deploy → Manage deployments**.
+2. Select the active deployment (left). Under **Web app**, the **URL** is shown: click **Copy**.
+   It looks like `https://script.google.com/macros/s/AKfy…long code…/exec`.
+3. Not the URL from **Deploy → Test deployments**: that one ends in `/dev` and only works in your own signed-in
+   browser, not from the app.
+
+You can check the URL by opening it in a browser: it says *Slipscanner script is running*.
+
+## Find the token
+
+The token is the password for your script. `setup` made it: 48 letters and numbers. The app sends it with every
+scan; the script ignores anything without it.
+
+- **Script properties:** in the script editor click ⚙️ **Project Settings** (left bar) and scroll down to
+  **Script properties**. The value next to **TOKEN** is the token. Select it and copy it.
+- **Or the execution log:** in the editor choose **setup** in the function dropdown and click ▶ **Run**. The log at
+  the bottom shows `Token (keep private): …`. Running `setup` again shows the same token; it does not change it.
+
+**Getting the URL and token onto the phone:** on a Mac with the same Apple ID and Handoff switched on, copy on the
+Mac and paste on the iPhone (Universal Clipboard). Or open the script editor on the phone and copy from there.
+Don't send the token by email or chat.
 
 ### More send-to addresses
 

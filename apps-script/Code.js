@@ -29,8 +29,9 @@ function doGet() {
 }
 
 function doPost(e) {
-  var lock = LockService.getScriptLock(); lock.waitLock(20000);
+  var lock = LockService.getScriptLock();
   try {
+    if (!lock.tryLock(20000)) return json_({ ok: false, error: 'busy, try again' });
     var b = JSON.parse(e.postData.contents);
     var p = PropertiesService.getScriptProperties(), token = p.getProperty('TOKEN');
     if (!token || b.token !== token) return json_({ ok: false, error: 'bad token' });
@@ -38,14 +39,17 @@ function doPost(e) {
     var it = b.item || {};
     if (!/^[\w-]{6,64}$/.test(String(it.id))) throw new Error('not a Slipscanner record');
     if (p.getProperty('id_' + it.id)) return json_({ ok: true, duplicate: true });   // shortcut: ids kept in script properties (500 kB ≈ 10 000 slips), move to a sheet if that fills
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(it.date))) throw new Error('bad date: ' + clean_(it.date));
+    if (it.amount && !/^\d+(\.\d{1,2})?$/.test(String(it.amount))) throw new Error('bad amount: ' + clean_(it.amount));
     var to = String(it.to || '').trim().toLowerCase();
     if (allowed_().indexOf(to) < 0) throw new Error('address not allowed: ' + to + ' (add it to ALLOWED_TO in the script)');
     var pdf = Utilities.base64Decode(String(b.pdf || ''));
     if (pdf.length < 100 || pdf.length > MAX_BYTES) throw new Error('PDF missing or too large');
     if (String.fromCharCode(pdf[0], pdf[1], pdf[2], pdf[3], pdf[4]) !== '%PDF-') throw new Error('not a PDF');
-    var file = (it.date || 'scan') + '_slip_' + it.id + '.pdf';
-    MailApp.sendEmail({ to: to, name: 'Slipscanner', subject: subject_(it), body: body_(it), attachments: [Utilities.newBlob(pdf, 'application/pdf', file)] });
-    p.setProperty('id_' + it.id, new Date().toISOString());
+    var file = it.date + '_slip_' + it.id + '.pdf';
+    p.setProperty('id_' + it.id, new Date().toISOString());   // mark first: if this fails nothing is sent, so no duplicates
+    try { MailApp.sendEmail({ to: to, name: 'Slipscanner', subject: subject_(it), body: body_(it), attachments: [Utilities.newBlob(pdf, 'application/pdf', file)] }); }
+    catch (err) { p.deleteProperty('id_' + it.id); throw err; }
     return json_({ ok: true });
   } catch (err) {
     return json_({ ok: false, error: String(err && err.message || err) });
@@ -55,7 +59,7 @@ function doPost(e) {
 function clean_(s) { return String(s || '').replace(/[\r\n]+/g, ' ').slice(0, 80); }
 // Subject carries the tags for a quick look; the body carries them as JSON for the Mac side.
 function subject_(it) {
-  return ['[SLIP]', it.date, it.paidWith || '-', it.amount ? 'R' + Number(it.amount).toFixed(2) : '-', clean_(it.note) || '-', 'id ' + it.id].join(' · ');
+  return ['[SLIP]', it.date, clean_(it.paidWith) || '-', it.amount ? 'R' + Number(it.amount).toFixed(2) : '-', clean_(it.note) || '-', 'id ' + it.id].join(' · ');
 }
 function body_(it) {
   var tags = { id: it.id, date: it.date, paidWith: clean_(it.paidWith), amount: it.amount || '', note: clean_(it.note), pages: it.pages || '', source: it.source || '', scanned: it.created || '' };

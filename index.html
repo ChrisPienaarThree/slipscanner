@@ -147,7 +147,7 @@
 <script src="scan.js"></script>
 <script>
 'use strict';
-const VERSION = '1.0.0', KEEP_DAYS = 30, STALE_DAYS = 3;
+const VERSION = '1.0.1', KEEP_DAYS = 30, STALE_DAYS = 3;
 const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
 const today = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Johannesburg' });
 const fmtDate = d => new Date(d).toLocaleDateString('en-ZA', { day: '2-digit', month: 'short' });
@@ -165,7 +165,7 @@ $$('nav button').forEach(b => b.onclick = () => go(b.dataset.v));
 // ---------- storage: IndexedDB store 'docs' (PDF bytes + tags) ----------
 let DB, DOCS = [];
 function idb() { return new Promise((ok, no) => { const r = indexedDB.open('slipscanner', 1); r.onupgradeneeded = () => r.result.createObjectStore('docs', { keyPath: 'id' }); r.onsuccess = () => ok(r.result); r.onerror = () => no(r.error); }); }
-function tx(mode, fn) { return new Promise((ok, no) => { const t = DB.transaction('docs', mode); const r = fn(t.objectStore('docs')); t.oncomplete = () => ok(r && r.result); t.onerror = () => no(t.error); }); }
+function tx(mode, fn) { return new Promise((ok, no) => { const t = DB.transaction('docs', mode); const r = fn(t.objectStore('docs')); t.oncomplete = () => ok(r && r.result); t.onerror = t.onabort = () => no(t.error || new Error('phone storage refused the write (full?)')); }); }
 async function load() { DOCS = await tx('readonly', s => s.getAll()); }
 async function putDoc(d) { await tx('readwrite', s => s.put(d)); const i = DOCS.findIndex(x => x.id === d.id); i < 0 ? DOCS.push(d) : DOCS[i] = d; }
 async function delDoc(id) { await tx('readwrite', s => s.delete(id)); DOCS = DOCS.filter(x => x.id !== id); }
@@ -218,7 +218,7 @@ $('#edFull').onclick = () => { QUAD = fullQuad(); draw(); };
 $$('#edMode button').forEach(b => b.onclick = () => { MODE = b.dataset.v; $$('#edMode button').forEach(x => x.classList.toggle('on', x === b)); });
 $('#edDrop').onclick = () => { SRC = null; $('#ed').classList.remove('on'); };
 $('#edUse').onclick = async () => {
-  if (Scan.area(QUAD) < 100) return msg('#sMsg', 'The corners are too close together.', 'bad');
+  if (Scan.area(QUAD) < 100 || !Scan.convex(QUAD)) return msg('#sMsg', 'The corners are crossed or too close together. Drag each red dot to its own corner (top-left, top-right, bottom-right, bottom-left), or tap Auto edges.', 'bad');
   busy(true); await new Promise(r => setTimeout(r, 30));
   try {
     const [W, H] = Scan.outSize(QUAD, MAX_OUT), src = SRC.getContext('2d').getImageData(0, 0, SRC.width, SRC.height).data;
@@ -257,8 +257,8 @@ function renderDraft() {
 // ---------- save ----------
 $('#tSave').onclick = async () => {
   if (!PAGES.length && !PDF) return;
-  const amt = $('#tAmount').value.replace(/[\sR,]/g, '');
-  if (amt && !/^\d+(\.\d{1,2})?$/.test(amt)) return msg('#sMsg', 'Amount: numbers only, e.g. 2839.00', 'bad');
+  const amt = Scan.amount($('#tAmount').value);
+  if (amt === null) return msg('#sMsg', 'Amount: numbers only, e.g. 2839,50 or 2839.50', 'bad');
   busy(true);
   try {
     const bytes = PDF ? PDF.bytes : Scan.makePdf(PAGES);
@@ -287,10 +287,15 @@ function renderOut() {
   const docs = DOCS.slice().sort((a, b) => b.created.localeCompare(a.created)), waiting = docs.filter(d => !d.synced);
   const stale = waiting.filter(d => Date.now() - Date.parse(d.created) > STALE_DAYS * 864e5).length;
   $('#outInfo').textContent = (waiting.length ? `${waiting.length} waiting for Gmail. ` : 'Everything is in Gmail. ') + (stale ? `${stale} waiting more than ${STALE_DAYS} days: open the app with signal and tap Sync now. ` : '') + (cfg.syncErr ? 'Last error: ' + cfg.syncErr : '');
-  $('#outList').innerHTML = docs.map(d => `<div class="it"><div><b>${esc(d.date)}</b> ${esc(d.note || d.paidWith || 'slip')}${d.amount ? ' · R ' + esc(d.amount) : ''}<br><span class="muted">${esc(d.to || 'no address yet')} · ${d.pages ? d.pages + ' p · ' : ''}${kb(d.size)}</span></div>
-    <div style="text-align:right"><span class="st ${d.synced ? 's' : 'w'}">${d.synced ? '✓ in Gmail ' + fmtDate(d.syncedAt) : 'waiting'}</span><br>
+  $('#outList').innerHTML = docs.map(d => `<div class="it"><div><b>${esc(d.date)}</b> ${esc(d.note || d.paidWith || 'slip')}${d.amount ? ' · R ' + esc(d.amount) : ''}<br><span class="muted">${esc(d.to || 'no address yet')} · ${d.pages ? d.pages + ' p · ' : ''}${kb(d.size)}</span>${!d.synced && d.err ? `<br><span class="muted" style="color:var(--bad)">${esc(d.err)}</span>` : ''}</div>
+    <div style="text-align:right"><span class="st ${d.synced ? 's' : 'w'}">${d.synced ? '✓ in Gmail ' + fmtDate(d.syncedAt) : d.err ? '⚠ not sent' : 'waiting'}</span><br>
     <button class="sm" data-view="${d.id}" title="Open the PDF">View</button> <button class="sm" data-del="${d.id}" title="${d.synced ? 'Delete from this phone (it stays in Gmail)' : 'Delete: NOT yet in Gmail'}">🗑</button></div></div>`).join('') || '<p class="muted">No scans yet.</p>';
-  $$('[data-view]').forEach(b => b.onclick = () => { const d = DOCS.find(x => x.id === b.dataset.view); window.open(URL.createObjectURL(new Blob([d.pdf], { type: 'application/pdf' })), '_blank'); });
+  $$('[data-view]').forEach(b => b.onclick = async () => {
+    const d = DOCS.find(x => x.id === b.dataset.view), f = new File([d.pdf], d.date + '_slip.pdf', { type: 'application/pdf' });
+    // iPhone Home Screen apps have no back button, so use the share sheet there (preview, Save to Files); elsewhere a new tab
+    if (navigator.canShare && matchMedia('(display-mode: standalone)').matches && navigator.canShare({ files: [f] })) { try { await navigator.share({ files: [f] }); } catch (e) {} return; }
+    const u = URL.createObjectURL(f); window.open(u, '_blank'); setTimeout(() => URL.revokeObjectURL(u), 60000);
+  });
   $$('[data-del]').forEach(b => b.onclick = async () => {
     const d = DOCS.find(x => x.id === b.dataset.del);
     if (!d.synced && !confirm('This scan is NOT in Gmail yet. Delete it anyway?')) return;
@@ -300,8 +305,8 @@ function renderOut() {
 
 // ---------- sync: one scan per request; the script skips ids it already has, so retries never duplicate ----------
 function b64(bytes) { let s = ''; for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000)); return btoa(s); }
-async function post(body) {
-  const r = await fetch(cfg.url, { method: 'POST', body: JSON.stringify({ token: cfg.token, ...body }) }); // text/plain: no CORS preflight
+async function post(body, url = cfg.url, token = cfg.token) {
+  const r = await fetch(url, { method: 'POST', body: JSON.stringify({ token, ...body }) }); // text/plain: no CORS preflight
   if (!r.ok) throw new Error('HTTP ' + r.status); return r.json();
 }
 let syncing = false;
@@ -310,15 +315,18 @@ async function sync() {
   const todo = DOCS.filter(d => !d.synced && d.to).sort((a, b) => a.created.localeCompare(b.created));
   if (syncing || !todo.length || !cfg.url || !cfg.token || !navigator.onLine) return refresh();
   syncing = true; refresh();
-  try {
-    for (const d of todo) {
-      const { pdf, synced, size, ...item } = d;
+  const errs = [];
+  for (const d of todo) {   // one failing scan must not hold up the others
+    try {
+      const { pdf, synced, size, err, ...item } = d;
       const j = await post({ item, pdf: b64(new Uint8Array(pdf)) });
       if (!j.ok) throw new Error(j.error || 'rejected');
-      Object.assign(d, { synced: true, syncedAt: new Date().toISOString(), gmailId: j.id }); await putDoc(d);
-    }
-    cfg.lastSync = new Date().toISOString(); cfg.syncErr = ''; saveCfg();
-  } catch (e) { cfg.syncErr = e.message; saveCfg(); }
+      Object.assign(d, { synced: true, syncedAt: new Date().toISOString(), err: '' });
+    } catch (e) { d.err = e.message; errs.push(e.message); }
+    try { await putDoc(d); } catch (e) { errs.push(e.message); }
+    if (errs.length && /^(HTTP|Failed to fetch|Load failed|NetworkError)/.test(errs.at(-1))) break;   // no connection: stop, retry later
+  }
+  cfg.syncErr = errs.length ? `${errs.length} not sent: ${errs[0]}` : ''; if (!errs.length) cfg.lastSync = new Date().toISOString(); saveCfg();
   syncing = false; refresh(); if ($('#v-out').classList.contains('on')) renderOut();
 }
 $('#syncBtn').onclick = $('#net').onclick = () => { cfg.syncErr = ''; sync(); };
@@ -334,13 +342,14 @@ async function cleanup() { // D4: synced scans are deleted from the phone 30 day
 
 // ---------- settings ----------
 $('#cSave').onclick = async () => {
-  cfg.url = $('#cUrl').value.trim(); cfg.token = $('#cToken').value.trim(); saveCfg(); refresh();
-  if (!/^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/.test(cfg.url)) return msg('#cMsg', 'That is not a Google Apps Script web app URL (…/exec).', 'bad');
+  const url = $('#cUrl').value.trim(), token = $('#cToken').value.trim();   // saved only once the script accepts them
+  if (!/^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/.test(url)) return msg('#cMsg', 'That is not a Google Apps Script web app URL (…/exec).', 'bad');
   try {
-    const j = await post({ ping: true }); msg('#cMsg', j.ok ? 'Connected. Allowed addresses: ' + (j.allowed || []).join(', ') : 'Rejected: ' + j.error, j.ok ? 'ok' : 'bad');
-    if (j.ok) { if (!cfg.to.length && j.allowed && j.allowed.length) { cfg.to = j.allowed.slice(); $('#cTo').value = cfg.to.join('\n'); resetTags(); } cfg.syncErr = ''; saveCfg(); sync(); }
+    const j = await post({ ping: true }, url, token); msg('#cMsg', j.ok ? 'Connected. Allowed addresses: ' + (j.allowed || []).join(', ') : 'Rejected: ' + j.error + '. Settings not saved.', j.ok ? 'ok' : 'bad');
+    if (j.ok) { cfg.url = url; cfg.token = token; if (!cfg.to.length && j.allowed && j.allowed.length) { cfg.to = j.allowed.slice(); $('#cTo').value = cfg.to.join('\n'); resetTags(); } cfg.syncErr = ''; saveCfg(); sync(); }
   }
-  catch (e) { msg('#cMsg', 'No connection: ' + e.message, 'bad'); }
+  catch (e) { msg('#cMsg', 'No connection: ' + e.message + '. Settings not saved.', 'bad'); }
+  refresh();
 };
 $('#cLists').onclick = () => {
   const lines = id => $(id).value.split('\n').map(s => s.trim()).filter(Boolean);
