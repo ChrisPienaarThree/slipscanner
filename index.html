@@ -89,6 +89,8 @@
       <div><label>Slip date</label><input id="tDate" type="date"></div>
       <div><label>Amount (R)</label><input id="tAmount" inputmode="decimal" autocomplete="off" placeholder="0.00"></div>
     </div>
+    <label>Entity</label><select id="tEnt" title="Who the slip belongs to. The first entity in your list (Settings) is the default."></select>
+    <input id="tEntNew" autocomplete="off" placeholder="New entity name" maxlength="60" hidden style="margin-top:6px">
     <label>Paid with</label><input id="tPaid" list="dlPaid" autocomplete="off" title="Pick from your list (Settings) or type">
     <label>Note</label><input id="tNote" autocomplete="off" placeholder="e.g. Dentist, diesel" maxlength="80">
     <label>Send to</label><select id="tTo" title="The email address this scan goes to. Edit the list under Settings."></select>
@@ -122,6 +124,8 @@
     <h2>Lists</h2>
     <label>Send to: email addresses, one per line (first = default)</label>
     <textarea id="cTo" rows="3" title="Each address must also be allowed in the script (ALLOWED_TO). Filled in for you when you connect."></textarea>
+    <label>Entities, one per line (first = default)</label>
+    <textarea id="cEnt" rows="4" title="People, companies or farms a slip can belong to. Filled from the script when you connect, if set there."></textarea>
     <label>Paid with: options, one per line</label>
     <textarea id="cPaid" rows="5" title="Shown as suggestions under Paid with, e.g. your card's last 4 digits"></textarea>
     <button class="pri" id="cLists">Save lists</button>
@@ -147,13 +151,13 @@
 <script src="scan.js"></script>
 <script>
 'use strict';
-const VERSION = '1.0.1', KEEP_DAYS = 30, STALE_DAYS = 3;
+const VERSION = '1.0.2', KEEP_DAYS = 30, STALE_DAYS = 3;
 const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
 const today = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Johannesburg' });
 const fmtDate = d => new Date(d).toLocaleDateString('en-ZA', { day: '2-digit', month: 'short' });
 const kb = n => n > 1e6 ? (n / 1e6).toFixed(1) + ' MB' : Math.round(n / 1e3) + ' kB';
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-const cfg = Object.assign({ to: [], paid: ['Credit card', 'Cheque account', 'Business account', 'Cash', 'EFT', 'Not paid yet'] }, JSON.parse(localStorage.getItem('slip.cfg') || '{}'));
+const cfg = Object.assign({ to: [], entities: [], paid: ['Credit card', 'Cheque account', 'Business account', 'Cash', 'EFT', 'Not paid yet'] }, JSON.parse(localStorage.getItem('slip.cfg') || '{}'));
 const saveCfg = () => localStorage.setItem('slip.cfg', JSON.stringify(cfg));
 function msg(id, text, cls = 'ok') { const m = $(id); m.className = 'msg on ' + cls; m.textContent = text; if (cls === 'ok') setTimeout(() => m.classList.remove('on'), 4000); }
 const busy = on => $('#busy').classList.toggle('on', on);
@@ -243,6 +247,7 @@ async function onPick(e) {
   if (PDF) return msg('#sMsg', 'Save or clear the PDF first.', 'warn');
   try { busy(true); await takeImage(f); } catch (x) { msg('#sMsg', x.message, 'bad'); } finally { busy(false); }
 }
+$('#tEnt').onchange = () => { $('#tEntNew').hidden = $('#tEnt').value !== '+new'; if (!$('#tEntNew').hidden) $('#tEntNew').focus(); };
 $('#inCam').onchange = onPick; $('#inFile').onchange = onPick;
 $('#pdfDrop').onclick = () => { PDF = null; renderDraft(); };
 
@@ -259,12 +264,18 @@ $('#tSave').onclick = async () => {
   if (!PAGES.length && !PDF) return;
   const amt = Scan.amount($('#tAmount').value);
   if (amt === null) return msg('#sMsg', 'Amount: numbers only, e.g. 2839,50 or 2839.50', 'bad');
+  let ent = $('#tEnt').value;
+  if (ent === '+new') {
+    ent = $('#tEntNew').value.trim().replace(/\s+/g, ' ');
+    if (!ent) return msg('#sMsg', 'Type the new entity name, or pick one from the list.', 'bad');
+    if (!cfg.entities.some(e => e.toLowerCase() === ent.toLowerCase())) { cfg.entities.push(ent); saveCfg(); $('#cEnt').value = cfg.entities.join('\n'); }
+  }
   busy(true);
   try {
     const bytes = PDF ? PDF.bytes : Scan.makePdf(PAGES);
     const d = {
       id: 'S' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), created: new Date().toISOString(),
-      date: $('#tDate').value || today(), amount: amt, paidWith: $('#tPaid').value.trim(), note: $('#tNote').value.trim(),
+      date: $('#tDate').value || today(), amount: amt, entity: ent, paidWith: $('#tPaid').value.trim(), note: $('#tNote').value.trim(),
       to: $('#tTo').value || cfg.to[0] || '', pages: PDF ? '' : PAGES.length, source: PDF ? 'file' : 'camera',
       pdf: bytes, size: bytes.length, synced: false
     };
@@ -279,6 +290,8 @@ $('#tSave').onclick = async () => {
 function resetTags() {
   $('#tDate').value = today(); $('#tAmount').value = ''; $('#tNote').value = ''; $('#tPaid').value = cfg.lastPaid || '';
   $('#tTo').innerHTML = cfg.to.map(l => `<option>${esc(l)}</option>`).join('') || '<option value="">(set an address under Settings)</option>'; if (cfg.to.includes(cfg.lastTo)) $('#tTo').value = cfg.lastTo;
+  $('#tEnt').innerHTML = cfg.entities.map(e => `<option>${esc(e)}</option>`).join('') + '<option value="+new">➕ Add new…</option>';
+  $('#tEnt').value = cfg.entities[0] || '+new'; $('#tEntNew').value = ''; $('#tEntNew').hidden = !!cfg.entities.length;
   $('#dlPaid').innerHTML = cfg.paid.map(p => `<option value="${esc(p)}">`).join('');
 }
 
@@ -287,7 +300,7 @@ function renderOut() {
   const docs = DOCS.slice().sort((a, b) => b.created.localeCompare(a.created)), waiting = docs.filter(d => !d.synced);
   const stale = waiting.filter(d => Date.now() - Date.parse(d.created) > STALE_DAYS * 864e5).length;
   $('#outInfo').textContent = (waiting.length ? `${waiting.length} waiting for Gmail. ` : 'Everything is in Gmail. ') + (stale ? `${stale} waiting more than ${STALE_DAYS} days: open the app with signal and tap Sync now. ` : '') + (cfg.syncErr ? 'Last error: ' + cfg.syncErr : '');
-  $('#outList').innerHTML = docs.map(d => `<div class="it"><div><b>${esc(d.date)}</b> ${esc(d.note || d.paidWith || 'slip')}${d.amount ? ' · R ' + esc(d.amount) : ''}<br><span class="muted">${esc(d.to || 'no address yet')} · ${d.pages ? d.pages + ' p · ' : ''}${kb(d.size)}</span>${!d.synced && d.err ? `<br><span class="muted" style="color:var(--bad)">${esc(d.err)}</span>` : ''}</div>
+  $('#outList').innerHTML = docs.map(d => `<div class="it"><div><b>${esc(d.date)}</b> ${esc(d.entity ? d.entity + ' · ' : '')}${esc(d.note || d.paidWith || 'slip')}${d.amount ? ' · R ' + esc(d.amount) : ''}<br><span class="muted">${esc(d.to || 'no address yet')} · ${d.pages ? d.pages + ' p · ' : ''}${kb(d.size)}</span>${!d.synced && d.err ? `<br><span class="muted" style="color:var(--bad)">${esc(d.err)}</span>` : ''}</div>
     <div style="text-align:right"><span class="st ${d.synced ? 's' : 'w'}">${d.synced ? '✓ in Gmail ' + fmtDate(d.syncedAt) : d.err ? '⚠ not sent' : 'waiting'}</span><br>
     <button class="sm" data-view="${d.id}" title="Open the PDF">View</button> <button class="sm" data-del="${d.id}" title="${d.synced ? 'Delete from this phone (it stays in Gmail)' : 'Delete: NOT yet in Gmail'}">🗑</button></div></div>`).join('') || '<p class="muted">No scans yet.</p>';
   $$('[data-view]').forEach(b => b.onclick = async () => {
@@ -346,7 +359,9 @@ $('#cSave').onclick = async () => {
   if (!/^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/.test(url)) return msg('#cMsg', 'That is not a Google Apps Script web app URL (…/exec).', 'bad');
   try {
     const j = await post({ ping: true }, url, token); msg('#cMsg', j.ok ? 'Connected. Allowed addresses: ' + (j.allowed || []).join(', ') : 'Rejected: ' + j.error + '. Settings not saved.', j.ok ? 'ok' : 'bad');
-    if (j.ok) { cfg.url = url; cfg.token = token; if (!cfg.to.length && j.allowed && j.allowed.length) { cfg.to = j.allowed.slice(); $('#cTo').value = cfg.to.join('\n'); resetTags(); } cfg.syncErr = ''; saveCfg(); sync(); }
+    if (j.ok) { cfg.url = url; cfg.token = token; if (!cfg.to.length && j.allowed && j.allowed.length) cfg.to = j.allowed.slice();
+      if (!cfg.entities.length && j.entities && j.entities.length) cfg.entities = j.entities.slice();   // the script's list fills an empty phone list
+      $('#cTo').value = cfg.to.join('\n'); $('#cEnt').value = cfg.entities.join('\n'); resetTags(); cfg.syncErr = ''; saveCfg(); sync(); }
   }
   catch (e) { msg('#cMsg', 'No connection: ' + e.message + '. Settings not saved.', 'bad'); }
   refresh();
@@ -355,7 +370,7 @@ $('#cLists').onclick = () => {
   const lines = id => $(id).value.split('\n').map(s => s.trim()).filter(Boolean);
   const to = lines('#cTo').map(s => s.toLowerCase()), bad = to.find(a => !/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/.test(a));
   if (bad) return msg('#lMsg', `"${bad}" is not an email address.`, 'bad');
-  cfg.to = to; cfg.paid = lines('#cPaid'); saveCfg(); resetTags(); msg('#lMsg', 'Saved.');
+  cfg.to = to; cfg.entities = lines('#cEnt'); cfg.paid = lines('#cPaid'); saveCfg(); resetTags(); msg('#lMsg', 'Saved.');
 };
 
 // ---------- hover tips, 0.4 s delay (titles become tips) ----------
@@ -369,7 +384,7 @@ $('#cLists').onclick = () => {
 (async () => {
   DB = await idb(); await load(); await cleanup();
   $('#ver').textContent = VERSION; $('#cUrl').value = cfg.url || ''; $('#cToken').value = cfg.token || '';
-  $('#cTo').value = cfg.to.join('\n'); $('#cPaid').value = cfg.paid.join('\n');
+  $('#cTo').value = cfg.to.join('\n'); $('#cEnt').value = cfg.entities.join('\n'); $('#cPaid').value = cfg.paid.join('\n');
   resetTags(); renderDraft(); refresh();
   if (!cfg.url) msg('#sMsg', 'Scans are kept on this phone. Link Gmail under Settings to send them.', 'warn');
   if (navigator.storage && navigator.storage.persist) navigator.storage.persist().then(p => $('#storeInfo').textContent = p ? 'Phone storage: kept (persistent).' : 'Phone storage: iOS may clear it if the app is unused for weeks. Install to the Home Screen and sync often.');

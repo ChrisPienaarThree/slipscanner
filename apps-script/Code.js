@@ -24,6 +24,14 @@ function allowed_() {
 }
 
 // Opening the URL in a browser (GET) just confirms the script is running; scans arrive by POST from the app.
+// Entities for the phone's list: script property ENTITIES (one per line or comma-separated), else ENTITIES_DEFAULT
+// from an optional private file in the same project (not published).
+function entities_() {
+  var v = PropertiesService.getScriptProperties().getProperty('ENTITIES');
+  var list = v ? v.split(/[\n,]/) : (typeof ENTITIES_DEFAULT !== 'undefined' ? ENTITIES_DEFAULT : []);
+  return list.map(function (s) { return clean_(s).trim(); }).filter(String);
+}
+
 function doGet() {
   return ContentService.createTextOutput('Slipscanner script is running. Paste this URL and your token into the app under Settings.');
 }
@@ -35,7 +43,7 @@ function doPost(e) {
     var b = JSON.parse(e.postData.contents);
     var p = PropertiesService.getScriptProperties(), token = p.getProperty('TOKEN');
     if (!token || b.token !== token) return json_({ ok: false, error: 'bad token' });
-    if (b.ping) return json_({ ok: true, allowed: allowed_() });
+    if (b.ping) return json_({ ok: true, allowed: allowed_(), entities: entities_() });
     var it = b.item || {};
     if (!/^[\w-]{6,64}$/.test(String(it.id))) throw new Error('not a Slipscanner record');
     if (p.getProperty('id_' + it.id)) return json_({ ok: true, duplicate: true });   // shortcut: ids kept in script properties (500 kB ≈ 10 000 slips), move to a sheet if that fills
@@ -59,10 +67,10 @@ function doPost(e) {
 function clean_(s) { return String(s || '').replace(/[\r\n]+/g, ' ').slice(0, 80); }
 // Subject carries the tags for a quick look; the body carries them as JSON for the Mac side.
 function subject_(it) {
-  return ['[SLIP]', it.date, clean_(it.paidWith) || '-', it.amount ? 'R' + Number(it.amount).toFixed(2) : '-', clean_(it.note) || '-', 'id ' + it.id].join(' · ');
+  return ['[SLIP]', it.date, clean_(it.entity) || '-', clean_(it.paidWith) || '-', it.amount ? 'R' + Number(it.amount).toFixed(2) : '-', clean_(it.note) || '-', 'id ' + it.id].join(' · ');
 }
 function body_(it) {
-  var tags = { id: it.id, date: it.date, paidWith: clean_(it.paidWith), amount: it.amount || '', note: clean_(it.note), pages: it.pages || '', source: it.source || '', scanned: it.created || '' };
+  var tags = { id: it.id, date: it.date, entity: clean_(it.entity), paidWith: clean_(it.paidWith), amount: it.amount || '', note: clean_(it.note), pages: it.pages || '', source: it.source || '', scanned: it.created || '' };
   return 'Scanned with Slipscanner. Tags:\nSLIPSCANNER ' + JSON.stringify(tags) + '\n';
 }
 
