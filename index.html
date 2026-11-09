@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en-ZA">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1e3a5f">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Slipscanner">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon.svg">
+<title>Slipscanner</title>
+<style>
+  :root { --c:#1e3a5f; --bg:#f2f4f7; --ok:#2e7d32; --warn:#b26a00; --bad:#c62828; font-family: -apple-system, system-ui, sans-serif; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:#111; padding-bottom: calc(70px + env(safe-area-inset-bottom)); }
+  header { background:var(--c); color:#fff; padding: calc(10px + env(safe-area-inset-top)) 14px 10px; display:flex; justify-content:space-between; align-items:center; position:sticky; top:0; z-index:5; }
+  header h1 { font-size:18px; margin:0; }
+  #net { font-size:12px; padding:3px 8px; border-radius:10px; background:#ffffff22; border:0; color:#fff; }
+  main { padding:12px; max-width:640px; margin:0 auto; }
+  section { display:none; } section.on { display:block; }
+  .card { background:#fff; border-radius:12px; padding:12px; margin-bottom:12px; box-shadow:0 1px 2px #0001; }
+  h2 { font-size:17px; margin:4px 0 10px; }
+  label { display:block; font-size:13px; color:#444; margin:10px 0 4px; }
+  input, select, textarea { width:100%; font-size:17px; padding:10px; border:1px solid #bbb; border-radius:8px; background:#fff; color:#111; }
+  .row { display:flex; gap:8px; } .row > * { flex:1; min-width:0; }
+  button { font-size:16px; padding:11px 14px; border-radius:10px; border:1px solid var(--c); background:#fff; color:var(--c); }
+  button.pri { background:var(--c); color:#fff; width:100%; margin-top:14px; font-weight:600; }
+  button.sm { padding:6px 10px; font-size:14px; }
+  .pick { display:flex; align-items:center; justify-content:center; gap:6px; padding:16px 8px; border:2px dashed var(--c); border-radius:12px; color:var(--c); font-weight:600; margin:0; font-size:16px; }
+  .pick input { display:none; }
+  .seg { display:flex; border:1px solid var(--c); border-radius:10px; overflow:hidden; }
+  .seg button { flex:1; border:0; border-radius:0; padding:8px; font-size:14px; } .seg button.on { background:var(--c); color:#fff; }
+  #ed { display:none; } #ed.on { display:block; }
+  #wrap { position:relative; touch-action:none; user-select:none; -webkit-user-select:none; margin:0 -4px; }
+  #edCv { width:100%; display:block; border-radius:6px; background:#222; }
+  .h { position:absolute; width:34px; height:34px; margin:-17px 0 0 -17px; border-radius:50%; border:3px solid #fff; background:#e53935cc; box-shadow:0 0 0 1px #0006; touch-action:none; }
+  .tools { display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; } .tools > * { flex:1 1 auto; }
+  #pages { display:flex; gap:8px; overflow-x:auto; padding:4px 0; }
+  #pages .pg { position:relative; flex:0 0 auto; } #pages img { height:90px; border-radius:4px; border:1px solid #ccc; display:block; }
+  #pages .x { position:absolute; top:-6px; right:-6px; width:24px; height:24px; padding:0; border-radius:50%; background:var(--bad); color:#fff; border:0; font-size:14px; line-height:24px; }
+  .chip { display:inline-block; background:#e8edf3; color:var(--c); border-radius:8px; padding:6px 10px; font-size:14px; }
+  .msg { font-size:14px; padding:8px 10px; border-radius:8px; margin-top:10px; display:none; } .msg.on { display:block; }
+  .msg.ok { background:#e8f5e9; color:var(--ok); } .msg.warn { background:#fff4e0; color:var(--warn); } .msg.bad { background:#fdecea; color:var(--bad); }
+  .list .it { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:9px 0; border-bottom:1px solid #eee; font-size:14px; }
+  .list .it > div:first-child { min-width:0; overflow-wrap:anywhere; }
+  .st { font-size:12px; white-space:nowrap; } .st.w { color:var(--warn); } .st.s { color:var(--ok); }
+  .muted { color:#666; font-size:13px; }
+  nav { position:fixed; bottom:0; left:0; right:0; background:#fff; border-top:1px solid #ddd; display:flex; padding-bottom:env(safe-area-inset-bottom); z-index:5; }
+  nav button { flex:1; border:0; border-radius:0; padding:10px 2px 8px; font-size:12px; color:#555; background:#fff; }
+  nav button b { display:block; font-size:20px; } nav button.on { color:var(--c); font-weight:700; }
+  #busy { position:fixed; inset:0; background:#0007; color:#fff; display:none; align-items:center; justify-content:center; z-index:25; font-size:17px; } #busy.on { display:flex; }
+  #tip { position:fixed; z-index:30; background:#222; color:#fff; font-size:13px; padding:6px 9px; border-radius:6px; max-width:260px; pointer-events:none; display:none; }
+</style>
+</head>
+<body>
+<header><h1>Slipscanner</h1><button id="net" title="Scans not yet in Gmail. Tap to sync now.">…</button></header>
+<main>
+
+<!-- SCAN -->
+<section id="v-scan" class="on">
+  <div class="card">
+    <h2 id="scanTitle">New document</h2>
+    <div class="row">
+      <label class="pick" title="Take a photo of the slip. The app finds its edges; you can adjust them.">📷 Camera<input id="inCam" type="file" accept="image/*" capture="environment"></label>
+      <label class="pick" title="Use a photo or PDF already on the phone (e.g. a WhatsApp invoice)">🖼 Photo / PDF<input id="inFile" type="file" accept="image/*,application/pdf"></label>
+    </div>
+    <div id="ed">
+      <p class="muted" id="edHint">Drag the red dots to the corners of the slip.</p>
+      <div id="wrap"><canvas id="edCv"></canvas><div class="h" data-i="0"></div><div class="h" data-i="1"></div><div class="h" data-i="2"></div><div class="h" data-i="3"></div></div>
+      <div class="tools">
+        <button class="sm" id="edRot" title="Turn the photo a quarter turn clockwise">↻ Rotate</button>
+        <button class="sm" id="edAuto" title="Find the slip's edges again">Auto edges</button>
+        <button class="sm" id="edFull" title="Use the whole photo">Whole photo</button>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <div class="seg" id="edMode" title="Black and white is smaller and easiest to read; colour keeps stamps and highlights"><button data-v="bw" class="on">B/W</button><button data-v="colour">Colour</button></div>
+      </div>
+      <div class="row"><button class="sm" id="edDrop" style="margin-top:10px">✕ Discard</button><button class="pri" id="edUse" style="margin-top:10px">✓ Use page</button></div>
+    </div>
+    <div id="pages"></div>
+    <div id="pdfChip" hidden><span class="chip" id="pdfName"></span> <button class="sm" id="pdfDrop">✕</button></div>
+  </div>
+
+  <div class="card" id="tagCard" hidden>
+    <h2>Details <span class="muted">(all optional)</span></h2>
+    <div class="row">
+      <div><label>Slip date</label><input id="tDate" type="date"></div>
+      <div><label>Amount (R)</label><input id="tAmount" inputmode="decimal" autocomplete="off" placeholder="0.00"></div>
+    </div>
+    <label>Paid with</label><input id="tPaid" list="dlPaid" autocomplete="off" title="Pick from your list (Settings) or type">
+    <label>Note</label><input id="tNote" autocomplete="off" placeholder="e.g. Dentist, diesel" maxlength="80">
+    <label>Send to</label><select id="tTo" title="The email address this scan goes to. Edit the list under Settings."></select>
+    <button class="pri" id="tSave">Save to outbox</button>
+  </div>
+  <div class="msg" id="sMsg"></div>
+</section>
+
+<!-- OUTBOX -->
+<section id="v-out">
+  <div class="card">
+    <h2>Outbox</h2>
+    <p class="muted" id="outInfo"></p>
+    <div class="list" id="outList"></div>
+    <button class="pri" id="syncBtn">Sync now</button>
+    <div class="msg" id="oMsg"></div>
+  </div>
+</section>
+
+<!-- SETTINGS -->
+<section id="v-set">
+  <div class="card">
+    <h2>Link to Gmail</h2>
+    <p class="muted">From your Slipscanner Apps Script (see the README): the web app URL and the token.</p>
+    <label>Web app URL</label><input id="cUrl" autocomplete="off" placeholder="https://script.google.com/macros/s/…/exec">
+    <label>Token</label><input id="cToken" autocomplete="off" type="password">
+    <button class="pri" id="cSave">Save and test</button>
+    <div class="msg" id="cMsg"></div>
+  </div>
+  <div class="card">
+    <h2>Lists</h2>
+    <label>Send to: email addresses, one per line (first = default)</label>
+    <textarea id="cTo" rows="3" title="Each address must also be allowed in the script (ALLOWED_TO). Filled in for you when you connect."></textarea>
+    <label>Paid with: options, one per line</label>
+    <textarea id="cPaid" rows="5" title="Shown as suggestions under Paid with, e.g. your card's last 4 digits"></textarea>
+    <button class="pri" id="cLists">Save lists</button>
+    <div class="msg" id="lMsg"></div>
+  </div>
+  <div class="card">
+    <h2>On this phone</h2>
+    <p class="muted" id="storeInfo"></p>
+    <p class="muted">Scans stay here until Gmail confirms them, then are deleted 30 days later. Version <span id="ver"></span>.</p>
+  </div>
+</section>
+</main>
+
+<nav>
+  <button data-v="scan" class="on"><b>📷</b>Scan</button>
+  <button data-v="out"><b>📤</b>Outbox</button>
+  <button data-v="set"><b>⚙︎</b>Settings</button>
+</nav>
+<datalist id="dlPaid"></datalist>
+<div id="busy">Working…</div>
+<div id="tip"></div>
+
+<script src="scan.js"></script>
+<script>
+'use strict';
+const VERSION = '1.0.0', KEEP_DAYS = 30, STALE_DAYS = 3;
+const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
+const today = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Johannesburg' });
+const fmtDate = d => new Date(d).toLocaleDateString('en-ZA', { day: '2-digit', month: 'short' });
+const kb = n => n > 1e6 ? (n / 1e6).toFixed(1) + ' MB' : Math.round(n / 1e3) + ' kB';
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const cfg = Object.assign({ to: [], paid: ['Credit card', 'Cheque account', 'Business account', 'Cash', 'EFT', 'Not paid yet'] }, JSON.parse(localStorage.getItem('slip.cfg') || '{}'));
+const saveCfg = () => localStorage.setItem('slip.cfg', JSON.stringify(cfg));
+function msg(id, text, cls = 'ok') { const m = $(id); m.className = 'msg on ' + cls; m.textContent = text; if (cls === 'ok') setTimeout(() => m.classList.remove('on'), 4000); }
+const busy = on => $('#busy').classList.toggle('on', on);
+
+// ---------- navigation ----------
+function go(v) { $$('section').forEach(s => s.classList.toggle('on', s.id === 'v-' + v)); $$('nav button').forEach(b => b.classList.toggle('on', b.dataset.v === v)); if (v === 'out') renderOut(); }
+$$('nav button').forEach(b => b.onclick = () => go(b.dataset.v));
+
+// ---------- storage: IndexedDB store 'docs' (PDF bytes + tags) ----------
+let DB, DOCS = [];
+function idb() { return new Promise((ok, no) => { const r = indexedDB.open('slipscanner', 1); r.onupgradeneeded = () => r.result.createObjectStore('docs', { keyPath: 'id' }); r.onsuccess = () => ok(r.result); r.onerror = () => no(r.error); }); }
+function tx(mode, fn) { return new Promise((ok, no) => { const t = DB.transaction('docs', mode); const r = fn(t.objectStore('docs')); t.oncomplete = () => ok(r && r.result); t.onerror = () => no(t.error); }); }
+async function load() { DOCS = await tx('readonly', s => s.getAll()); }
+async function putDoc(d) { await tx('readwrite', s => s.put(d)); const i = DOCS.findIndex(x => x.id === d.id); i < 0 ? DOCS.push(d) : DOCS[i] = d; }
+async function delDoc(id) { await tx('readwrite', s => s.delete(id)); DOCS = DOCS.filter(x => x.id !== id); }
+
+// ---------- capture and edit ----------
+let SRC = null, QUAD = null, MODE = 'bw', PAGES = [], PDF = null;   // SRC: working canvas of the current photo (≤ 2400 px)
+const MAX_SRC = 2400, MAX_OUT = 1800, DET = 256;
+
+function loadImage(file) {
+  return new Promise((ok, no) => { const u = URL.createObjectURL(file), im = new Image(); im.onload = () => { URL.revokeObjectURL(u); ok(im); }; im.onerror = () => { URL.revokeObjectURL(u); no(new Error('That file is not a photo the phone can open.')); }; im.src = u; });
+}
+async function takeImage(file) {
+  const im = await loadImage(file), k = Math.min(1, MAX_SRC / Math.max(im.naturalWidth, im.naturalHeight));
+  const c = document.createElement('canvas'); c.width = Math.round(im.naturalWidth * k); c.height = Math.round(im.naturalHeight * k);
+  c.getContext('2d').drawImage(im, 0, 0, c.width, c.height); SRC = c; autoQuad(); $('#ed').classList.add('on'); draw();
+  $('#ed').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+function fullQuad() { const w = SRC.width, h = SRC.height, m = 0.02; return [[w * m, h * m], [w * (1 - m), h * m], [w * (1 - m), h * (1 - m)], [w * m, h * (1 - m)]]; }
+function autoQuad() {
+  const k = DET / Math.max(SRC.width, SRC.height), w = Math.max(8, Math.round(SRC.width * k)), h = Math.max(8, Math.round(SRC.height * k));
+  const c = document.createElement('canvas'); c.width = w; c.height = h; const g = c.getContext('2d'); g.drawImage(SRC, 0, 0, w, h);
+  const q = Scan.detectQuad(g.getImageData(0, 0, w, h).data, w, h);
+  QUAD = q ? q.map(([x, y]) => [(x + 0.5) / k, (y + 0.5) / k]) : fullQuad();
+  $('#edHint').textContent = q ? 'Edges found. Drag the red dots if they are off.' : 'No clear edges found. Drag the red dots to the corners of the slip.';
+}
+function draw() {
+  const cv = $('#edCv'), k = Math.min(1, 1000 / Math.max(SRC.width, SRC.height));
+  cv.width = Math.round(SRC.width * k); cv.height = Math.round(SRC.height * k);
+  const g = cv.getContext('2d'); g.drawImage(SRC, 0, 0, cv.width, cv.height);
+  g.fillStyle = '#0006'; g.beginPath(); g.rect(0, 0, cv.width, cv.height); QUAD.forEach(([x, y], i) => g[i ? 'lineTo' : 'moveTo'](x * k, y * k)); g.closePath(); g.fill('evenodd');
+  g.strokeStyle = '#4fc3f7'; g.lineWidth = Math.max(2, cv.width / 250); g.beginPath(); QUAD.forEach(([x, y], i) => g[i ? 'lineTo' : 'moveTo'](x * k, y * k)); g.closePath(); g.stroke();
+  const s = cv.clientWidth / SRC.width;
+  $$('.h').forEach(h => { const [x, y] = QUAD[h.dataset.i]; h.style.left = x * s + 'px'; h.style.top = y * s + 'px'; });
+}
+$$('.h').forEach(h => {
+  h.onpointerdown = e => { h.setPointerCapture(e.pointerId); e.preventDefault(); };
+  h.onpointermove = e => {
+    if (!h.hasPointerCapture(e.pointerId)) return;
+    const r = $('#edCv').getBoundingClientRect(), s = SRC.width / r.width;
+    QUAD[h.dataset.i] = [Math.max(0, Math.min(SRC.width - 1, (e.clientX - r.left) * s)), Math.max(0, Math.min(SRC.height - 1, (e.clientY - r.top) * s))]; draw();
+  };
+});
+addEventListener('resize', () => SRC && draw());
+$('#edRot').onclick = () => {
+  const c = document.createElement('canvas'); c.width = SRC.height; c.height = SRC.width; const g = c.getContext('2d');
+  g.translate(c.width, 0); g.rotate(Math.PI / 2); g.drawImage(SRC, 0, 0); SRC = c; autoQuad(); draw();
+};
+$('#edAuto').onclick = () => { autoQuad(); draw(); };
+$('#edFull').onclick = () => { QUAD = fullQuad(); draw(); };
+$$('#edMode button').forEach(b => b.onclick = () => { MODE = b.dataset.v; $$('#edMode button').forEach(x => x.classList.toggle('on', x === b)); });
+$('#edDrop').onclick = () => { SRC = null; $('#ed').classList.remove('on'); };
+$('#edUse').onclick = async () => {
+  if (Scan.area(QUAD) < 100) return msg('#sMsg', 'The corners are too close together.', 'bad');
+  busy(true); await new Promise(r => setTimeout(r, 30));
+  try {
+    const [W, H] = Scan.outSize(QUAD, MAX_OUT), src = SRC.getContext('2d').getImageData(0, 0, SRC.width, SRC.height).data;
+    const px = Scan.enhance(Scan.warp(src, SRC.width, SRC.height, QUAD, W, H), MODE);
+    const c = document.createElement('canvas'); c.width = W; c.height = H; c.getContext('2d').putImageData(new ImageData(px, W, H), 0, 0);
+    const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', MODE === 'bw' ? 0.7 : 0.75));
+    const t = document.createElement('canvas'), k = 180 / H; t.width = Math.max(1, Math.round(W * k)); t.height = 180; t.getContext('2d').drawImage(c, 0, 0, t.width, t.height);
+    PAGES.push({ jpeg: new Uint8Array(await blob.arrayBuffer()), w: W, h: H, thumb: t.toDataURL('image/jpeg', 0.6) });
+    SRC = null; $('#ed').classList.remove('on'); renderDraft();
+    msg('#sMsg', `Page ${PAGES.length} added. Add another page, or fill in the details and save.`);
+  } catch (e) { msg('#sMsg', 'Could not process the photo: ' + e.message, 'bad'); }
+  busy(false);
+};
+async function onPick(e) {
+  const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+  if (f.type === 'application/pdf' || /\.pdf$/i.test(f.name)) {
+    if (PAGES.length) return msg('#sMsg', 'Save or clear the scanned pages first, then pick the PDF.', 'warn');
+    const b = new Uint8Array(await f.arrayBuffer());
+    if (String.fromCharCode(...b.slice(0, 5)) !== '%PDF-') return msg('#sMsg', 'That file is not a PDF.', 'bad');
+    PDF = { bytes: b, name: f.name }; renderDraft(); return;
+  }
+  if (PDF) return msg('#sMsg', 'Save or clear the PDF first.', 'warn');
+  try { busy(true); await takeImage(f); } catch (x) { msg('#sMsg', x.message, 'bad'); } finally { busy(false); }
+}
+$('#inCam').onchange = onPick; $('#inFile').onchange = onPick;
+$('#pdfDrop').onclick = () => { PDF = null; renderDraft(); };
+
+function renderDraft() {
+  $('#pages').innerHTML = PAGES.map((p, i) => `<div class="pg"><img src="${p.thumb}" alt="Page ${i + 1}"><button class="x" data-i="${i}" title="Remove this page">✕</button></div>`).join('');
+  $$('#pages .x').forEach(b => b.onclick = () => { PAGES.splice(+b.dataset.i, 1); renderDraft(); });
+  $('#pdfChip').hidden = !PDF; if (PDF) $('#pdfName').textContent = '📄 ' + PDF.name + ' · ' + kb(PDF.bytes.length);
+  const has = PAGES.length || PDF; $('#tagCard').hidden = !has;
+  $('#scanTitle').textContent = PAGES.length ? `New document · ${PAGES.length} page${PAGES.length > 1 ? 's' : ''}` : 'New document';
+}
+
+// ---------- save ----------
+$('#tSave').onclick = async () => {
+  if (!PAGES.length && !PDF) return;
+  const amt = $('#tAmount').value.replace(/[\sR,]/g, '');
+  if (amt && !/^\d+(\.\d{1,2})?$/.test(amt)) return msg('#sMsg', 'Amount: numbers only, e.g. 2839.00', 'bad');
+  busy(true);
+  try {
+    const bytes = PDF ? PDF.bytes : Scan.makePdf(PAGES);
+    const d = {
+      id: 'S' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), created: new Date().toISOString(),
+      date: $('#tDate').value || today(), amount: amt, paidWith: $('#tPaid').value.trim(), note: $('#tNote').value.trim(),
+      to: $('#tTo').value || cfg.to[0] || '', pages: PDF ? '' : PAGES.length, source: PDF ? 'file' : 'camera',
+      pdf: bytes, size: bytes.length, synced: false
+    };
+    await putDoc(d);
+    cfg.lastPaid = d.paidWith; cfg.lastTo = d.to; saveCfg();
+    PAGES = []; PDF = null; renderDraft(); resetTags();
+    msg('#sMsg', 'Saved to the outbox (' + kb(d.size) + ').' + (navigator.onLine && cfg.url ? ' Sending to Gmail…' : ' It will go to Gmail when you are online.'));
+    refresh(); sync();
+  } catch (e) { msg('#sMsg', 'Could not save: ' + e.message, 'bad'); }
+  busy(false);
+};
+function resetTags() {
+  $('#tDate').value = today(); $('#tAmount').value = ''; $('#tNote').value = ''; $('#tPaid').value = cfg.lastPaid || '';
+  $('#tTo').innerHTML = cfg.to.map(l => `<option>${esc(l)}</option>`).join('') || '<option value="">(set an address under Settings)</option>'; if (cfg.to.includes(cfg.lastTo)) $('#tTo').value = cfg.lastTo;
+  $('#dlPaid').innerHTML = cfg.paid.map(p => `<option value="${esc(p)}">`).join('');
+}
+
+// ---------- outbox ----------
+function renderOut() {
+  const docs = DOCS.slice().sort((a, b) => b.created.localeCompare(a.created)), waiting = docs.filter(d => !d.synced);
+  const stale = waiting.filter(d => Date.now() - Date.parse(d.created) > STALE_DAYS * 864e5).length;
+  $('#outInfo').textContent = (waiting.length ? `${waiting.length} waiting for Gmail. ` : 'Everything is in Gmail. ') + (stale ? `${stale} waiting more than ${STALE_DAYS} days: open the app with signal and tap Sync now. ` : '') + (cfg.syncErr ? 'Last error: ' + cfg.syncErr : '');
+  $('#outList').innerHTML = docs.map(d => `<div class="it"><div><b>${esc(d.date)}</b> ${esc(d.note || d.paidWith || 'slip')}${d.amount ? ' · R ' + esc(d.amount) : ''}<br><span class="muted">${esc(d.to || 'no address yet')} · ${d.pages ? d.pages + ' p · ' : ''}${kb(d.size)}</span></div>
+    <div style="text-align:right"><span class="st ${d.synced ? 's' : 'w'}">${d.synced ? '✓ in Gmail ' + fmtDate(d.syncedAt) : 'waiting'}</span><br>
+    <button class="sm" data-view="${d.id}" title="Open the PDF">View</button> <button class="sm" data-del="${d.id}" title="${d.synced ? 'Delete from this phone (it stays in Gmail)' : 'Delete: NOT yet in Gmail'}">🗑</button></div></div>`).join('') || '<p class="muted">No scans yet.</p>';
+  $$('[data-view]').forEach(b => b.onclick = () => { const d = DOCS.find(x => x.id === b.dataset.view); window.open(URL.createObjectURL(new Blob([d.pdf], { type: 'application/pdf' })), '_blank'); });
+  $$('[data-del]').forEach(b => b.onclick = async () => {
+    const d = DOCS.find(x => x.id === b.dataset.del);
+    if (!d.synced && !confirm('This scan is NOT in Gmail yet. Delete it anyway?')) return;
+    await delDoc(d.id); refresh(); renderOut();
+  });
+}
+
+// ---------- sync: one scan per request; the script skips ids it already has, so retries never duplicate ----------
+function b64(bytes) { let s = ''; for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000)); return btoa(s); }
+async function post(body) {
+  const r = await fetch(cfg.url, { method: 'POST', body: JSON.stringify({ token: cfg.token, ...body }) }); // text/plain: no CORS preflight
+  if (!r.ok) throw new Error('HTTP ' + r.status); return r.json();
+}
+let syncing = false;
+async function sync() {
+  DOCS.filter(d => !d.synced && !d.to && cfg.to[0]).forEach(d => { d.to = cfg.to[0]; putDoc(d); });   // scanned before an address was set
+  const todo = DOCS.filter(d => !d.synced && d.to).sort((a, b) => a.created.localeCompare(b.created));
+  if (syncing || !todo.length || !cfg.url || !cfg.token || !navigator.onLine) return refresh();
+  syncing = true; refresh();
+  try {
+    for (const d of todo) {
+      const { pdf, synced, size, ...item } = d;
+      const j = await post({ item, pdf: b64(new Uint8Array(pdf)) });
+      if (!j.ok) throw new Error(j.error || 'rejected');
+      Object.assign(d, { synced: true, syncedAt: new Date().toISOString(), gmailId: j.id }); await putDoc(d);
+    }
+    cfg.lastSync = new Date().toISOString(); cfg.syncErr = ''; saveCfg();
+  } catch (e) { cfg.syncErr = e.message; saveCfg(); }
+  syncing = false; refresh(); if ($('#v-out').classList.contains('on')) renderOut();
+}
+$('#syncBtn').onclick = $('#net').onclick = () => { cfg.syncErr = ''; sync(); };
+addEventListener('online', sync); document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && sync());
+
+function refresh() {
+  const n = DOCS.filter(d => !d.synced).length;
+  $('#net').textContent = syncing ? 'Syncing…' : !navigator.onLine ? `Offline · ${n} waiting` : !cfg.url ? 'Not linked' : cfg.syncErr && n ? `${n} waiting · error` : n ? `${n} to sync` : 'All in Gmail ✓';
+}
+async function cleanup() { // D4: synced scans are deleted from the phone 30 days after Gmail confirmed them
+  for (const d of DOCS.filter(d => d.synced && Date.now() - Date.parse(d.syncedAt) > KEEP_DAYS * 864e5)) await delDoc(d.id);
+}
+
+// ---------- settings ----------
+$('#cSave').onclick = async () => {
+  cfg.url = $('#cUrl').value.trim(); cfg.token = $('#cToken').value.trim(); saveCfg(); refresh();
+  if (!/^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/.test(cfg.url)) return msg('#cMsg', 'That is not a Google Apps Script web app URL (…/exec).', 'bad');
+  try {
+    const j = await post({ ping: true }); msg('#cMsg', j.ok ? 'Connected. Allowed addresses: ' + (j.allowed || []).join(', ') : 'Rejected: ' + j.error, j.ok ? 'ok' : 'bad');
+    if (j.ok) { if (!cfg.to.length && j.allowed && j.allowed.length) { cfg.to = j.allowed.slice(); $('#cTo').value = cfg.to.join('\n'); resetTags(); } cfg.syncErr = ''; saveCfg(); sync(); }
+  }
+  catch (e) { msg('#cMsg', 'No connection: ' + e.message, 'bad'); }
+};
+$('#cLists').onclick = () => {
+  const lines = id => $(id).value.split('\n').map(s => s.trim()).filter(Boolean);
+  const to = lines('#cTo').map(s => s.toLowerCase()), bad = to.find(a => !/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/.test(a));
+  if (bad) return msg('#lMsg', `"${bad}" is not an email address.`, 'bad');
+  cfg.to = to; cfg.paid = lines('#cPaid'); saveCfg(); resetTags(); msg('#lMsg', 'Saved.');
+};
+
+// ---------- hover tips, 0.4 s delay (titles become tips) ----------
+(() => { let tm, el; const tip = $('#tip');
+  document.addEventListener('mouseover', e => { const t = e.target.closest('[title],[data-tip]'); if (!t || t === el) return; if (t.title) { t.dataset.tip = t.title; t.removeAttribute('title'); } el = t; clearTimeout(tm); tip.style.display = 'none';
+    tm = setTimeout(() => { const r = t.getBoundingClientRect(); tip.textContent = t.dataset.tip; tip.style.display = 'block'; tip.style.left = Math.min(r.left, innerWidth - 270) + 'px'; tip.style.top = (r.bottom + 6 + tip.offsetHeight > innerHeight ? r.top - tip.offsetHeight - 6 : r.bottom + 6) + 'px'; }, 400); });
+  document.addEventListener('mouseout', e => { if (el && !el.contains(e.relatedTarget)) { clearTimeout(tm); tip.style.display = 'none'; el = null; } });
+})();
+
+// ---------- start ----------
+(async () => {
+  DB = await idb(); await load(); await cleanup();
+  $('#ver').textContent = VERSION; $('#cUrl').value = cfg.url || ''; $('#cToken').value = cfg.token || '';
+  $('#cTo').value = cfg.to.join('\n'); $('#cPaid').value = cfg.paid.join('\n');
+  resetTags(); renderDraft(); refresh();
+  if (!cfg.url) msg('#sMsg', 'Scans are kept on this phone. Link Gmail under Settings to send them.', 'warn');
+  if (navigator.storage && navigator.storage.persist) navigator.storage.persist().then(p => $('#storeInfo').textContent = p ? 'Phone storage: kept (persistent).' : 'Phone storage: iOS may clear it if the app is unused for weeks. Install to the Home Screen and sync often.');
+  if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('sw.js');
+  sync();
+})();
+</script>
+</body>
+</html>
