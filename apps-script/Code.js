@@ -23,6 +23,11 @@ function allowed_() {
     .map(function (s) { return s.trim().toLowerCase(); }).filter(String);
 }
 
+// Opening the URL in a browser (GET) just confirms the script is running; scans arrive by POST from the app.
+function doGet() {
+  return ContentService.createTextOutput('Slipscanner script is running. Paste this URL and your token into the app under Settings.');
+}
+
 function doPost(e) {
   var lock = LockService.getScriptLock(); lock.waitLock(20000);
   try {
